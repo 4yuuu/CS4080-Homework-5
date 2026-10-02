@@ -28,6 +28,20 @@ class Interpreter implements Expr.Visitor<Object>,
   final Environment globals = new Environment();
   private Environment environment = globals;
 //< Functions global-environment
+  private static class VariableResolution {
+        final int depth;
+        final int index;
+        VariableResolution(int depth, int index) {
+            this.depth = depth;
+            this.index = index;
+        }
+    }
+    private final Map<Expr, VariableResolution> locals = new HashMap<>();
+
+    // Called by the Resolver
+    void resolve(Expr expr, int depth, int index) {
+        locals.put(expr, new VariableResolution(depth, index));
+    }
 //> Resolving and Binding locals-field
   private final Map<Expr, Integer> locals = new HashMap<>();
 //< Resolving and Binding locals-field
@@ -106,7 +120,7 @@ class Interpreter implements Expr.Visitor<Object>,
 //> Statements and State visit-block
   @Override
   public Void visitBlockStmt(Stmt.Block stmt) {
-    executeBlock(stmt.statements, new Environment(environment));
+    executeBlock(stmt.statements, new Environment(environment, stmt.localsCount));
     return null;
   }
 //< Statements and State visit-block
@@ -253,10 +267,9 @@ class Interpreter implements Expr.Visitor<Object>,
     environment.assign(expr.name, value);
 */
 //> Resolving and Binding resolved-assign
-
-    Integer distance = locals.get(expr);
-    if (distance != null) {
-      environment.assignAt(distance, expr.name, value);
+    VariableResolution resolution = locals.get(expr);
+    if (resolution != null) {
+      environment.assignAt(resolution.depth, resolution.index, value);
     } else {
       globals.assign(expr.name, value);
     }
@@ -479,9 +492,13 @@ class Interpreter implements Expr.Visitor<Object>,
     return environment.get(expr.name);
 */
 //> Resolving and Binding call-look-up-variable
-    return lookUpVariable(expr.name, expr);
-//< Resolving and Binding call-look-up-variable
-  }
+    VariableResolution resolution = locals.get(expr);
+        if (resolution != null) {
+            return environment.getAt(resolution.depth, resolution.index);
+        } else {
+            return globals.get(expr.name);
+        }
+     }
 //> Resolving and Binding look-up-variable
   private Object lookUpVariable(Token name, Expr expr) {
     Integer distance = locals.get(expr);

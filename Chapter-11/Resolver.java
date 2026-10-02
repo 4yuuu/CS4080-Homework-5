@@ -9,8 +9,19 @@ import java.util.Stack;
 class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   private final Interpreter interpreter;
 //> scopes-field
-  private final Stack<Map<String, Boolean>> scopes = new Stack<>();
+  private final Stack<Map<String, Integer>> scopes = new Stack<>();
 //< scopes-field
+  private static class Variable {
+    final Token name;
+    boolean defined;
+    boolean used;
+
+    Variable(Token name, boolean defined) {
+      this.name = name;
+      this.defined = defined;
+      this.used = false;
+    }
+  }
 //> function-type-field
   private FunctionType currentFunction = FunctionType.NONE;
 //< function-type-field
@@ -325,7 +336,8 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   @Override
   public Void visitVariableExpr(Expr.Variable expr) {
     if (!scopes.isEmpty() &&
-        scopes.peek().get(expr.name.lexeme) == Boolean.FALSE) {
+      scopes.peek().containsKey(expr.name.lexeme) &&
+      scopes.peek().get(expr.name.lexeme).defined == false) {
       Lox.error(expr.name,
           "Can't read local variable in its own initializer.");
     }
@@ -381,7 +393,7 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   private void declare(Token name) {
     if (scopes.isEmpty()) return;
 
-    Map<String, Boolean> scope = scopes.peek();
+    Map<String, Integer> scope = scopes.peek();
 //> duplicate-variable
     if (scope.containsKey(name.lexeme)) {
       Lox.error(name,
@@ -389,21 +401,21 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     }
 
 //< duplicate-variable
-    scope.put(name.lexeme, false);
-  }
+    scope.put(name.lexeme, scope.size());
 //< declare
 //> define
   private void define(Token name) {
     if (scopes.isEmpty()) return;
-    scopes.peek().put(name.lexeme, true);
+    scopes.peek().get(name.lexeme).defined = true;
   }
 //< define
 //> resolve-local
   private void resolveLocal(Expr expr, Token name) {
-    for (int i = scopes.size() - 1; i >= 0; i--) {
-      if (scopes.get(i).containsKey(name.lexeme)) {
-        interpreter.resolve(expr, scopes.size() - 1 - i);
-        return;
+        for (int i = 0; i < scopes.size(); i++) {
+            Map<String, Integer> scope = scopes.get(scopes.size() - 1 - i);
+            if (scope.containsKey(name.lexeme)) {
+                interpreter.resolve(expr, i, scope.get(name.lexeme));
+                return;
       }
     }
   }
